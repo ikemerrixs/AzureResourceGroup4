@@ -1,0 +1,168 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "merrixstortType": {
+      "type": "string",
+      "defaultValue": "Standard_LRS",
+      "allowedValues": [
+        "Standard_LRS",
+        "Standard_ZRS",
+        "Standard_GRS",
+        "Standard_RAGRS",
+        "Premium_LRS"
+      ]
+    },
+    "morrisVMName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "morrisVMAdminUserName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "morrisVMAdminPassword": {
+      "type": "securestring"
+    },
+    "morrisVMUbuntuOSVersion": {
+      "type": "string",
+      "defaultValue": "14.04.2-LTS",
+      "allowedValues": [
+        "12.04.5-LTS",
+        "14.04.2-LTS"
+      ]
+    }},
+  "variables": {
+    "merrixstortName": "[concat('merrixstort', uniqueString(resourceGroup().id))]",
+    "morrisnetPrefix": "10.0.0.0/16",
+    "morrisnetSubnet1Name": "Subnet-1",
+    "morrisnetSubnet1Prefix": "10.0.0.0/24",
+    "morrisnetSubnet2Name": "Subnet-2",
+    "morrisnetSubnet2Prefix": "10.0.1.0/24",
+    "morrisVMImagePublisher": "Canonical",
+    "morrisVMImageOffer": "UbuntuServer",
+    "morrisVMOSDiskName": "morrisVMOSDisk",
+    "morrisVMVmSize": "Standard_D2_v2",
+    "morrisVMVnetID": "[resourceId('Microsoft.Network/virtualNetworks', 'morrisnet')]",
+    "morrisVMSubnetRef": "[concat(variables('morrisVMVnetID'), '/subnets/', variables('morrisnetSubnet1Name'))]",
+    "morrisVMStorageAccountContainerName": "vhds",
+    "morrisVMNicName": "[concat(parameters('morrisVMName'), 'NetworkInterface')]"},
+  "resources": [
+    {
+      "name": "[variables('merrixstortName')]",
+      "type": "Microsoft.Storage/storageAccounts",
+      "location": "[resourceGroup().location]",
+      "apiVersion": "2016-01-01",
+      "sku": {
+        "name": "[parameters('merrixstortType')]"
+      },
+      "dependsOn": [ ],
+      "tags": {
+        "displayName": "merrixstort"
+      },
+      "kind": "Storage"
+    },
+    {
+      "name": "morrisnet",
+      "type": "Microsoft.Network/virtualNetworks",
+      "location": "[resourceGroup().location]",
+      "apiVersion": "2016-03-30",
+      "dependsOn": [ ],
+      "tags": {
+        "displayName": "morrisnet"
+      },
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "[variables('morrisnetPrefix')]"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "[variables('morrisnetSubnet1Name')]",
+            "properties": {
+              "addressPrefix": "[variables('morrisnetSubnet1Prefix')]"
+            }
+          },
+          {
+            "name": "[variables('morrisnetSubnet2Name')]",
+            "properties": {
+              "addressPrefix": "[variables('morrisnetSubnet2Prefix')]"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "[variables('morrisVMNicName')]",
+      "type": "Microsoft.Network/networkInterfaces",
+      "location": "[resourceGroup().location]",
+      "apiVersion": "2016-03-30",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', 'morrisnet')]"
+      ],
+      "tags": {
+        "displayName": "morrisVMNic"
+      },
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+              "privateIPAllocationMethod": "Dynamic",
+              "subnet": {
+                "id": "[variables('morrisVMSubnetRef')]"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "[parameters('morrisVMName')]",
+      "type": "Microsoft.Compute/virtualMachines",
+      "location": "[resourceGroup().location]",
+      "apiVersion": "2015-06-15",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('merrixstortName'))]",
+        "[resourceId('Microsoft.Network/networkInterfaces', variables('morrisVMNicName'))]"
+      ],
+      "tags": {
+        "displayName": "morrisVM"
+      },
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "[variables('morrisVMVmSize')]"
+        },
+        "osProfile": {
+          "computerName": "[parameters('morrisVMName')]",
+          "adminUsername": "[parameters('morrisVMAdminUsername')]",
+          "adminPassword": "[parameters('morrisVMAdminPassword')]"
+        },
+        "storageProfile": {
+          "imageReference": {
+            "publisher": "[variables('morrisVMImagePublisher')]",
+            "offer": "[variables('morrisVMImageOffer')]",
+            "sku": "[parameters('morrisVMUbuntuOSVersion')]",
+            "version": "latest"
+          },
+          "osDisk": {
+            "name": "morrisVMOSDisk",
+            "vhd": {
+              "uri": "[concat(reference(resourceId('Microsoft.Storage/storageAccounts', variables('merrixstortName')), '2016-01-01').primaryEndpoints.blob, variables('morrisVMStorageAccountContainerName'), '/', variables('morrisVMOSDiskName'), '.vhd')]"
+            },
+            "caching": "ReadWrite",
+            "createOption": "FromImage"
+          }
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('morrisVMNicName'))]"
+            }
+          ]
+        }
+      }
+    }],
+  "outputs": {}
+}
